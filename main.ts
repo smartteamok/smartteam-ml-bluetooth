@@ -1,0 +1,238 @@
+/**
+ * SmartTEAM ML Bluetooth — bloques para reaccionar a las clases que detecta
+ * el entrenador SmartTEAM ML en el navegador, conectado por Bluetooth
+ * (servicio UART). Requiere micro:bit V2 (la V1 queda corta de memoria con
+ * el stack Bluetooth).
+ *
+ * Protocolo (una línea por mensaje), siempre "a pedido":
+ *   micro:bit → navegador: "ML?\n" (sondeo en segundo plano, solo mientras
+ *     hay una computadora conectada)
+ *   navegador → micro:bit: "ML:<nombre de la clase>\n" (una respuesta por
+ *     pedido; "none" cuando no hay detección)
+ *   micro:bit → navegador: "ML@<alias>\n" (si el programa nombró la placa)
+ *
+ * Como el ritmo lo marca el micro:bit, nunca llega un byte sin pedirlo y el
+ * buffer no se llena aunque el programa esté ocupado.
+ *
+ * Importante: este paquete usa `bluetooth`, que en MakeCode es incompatible
+ * con `radio`. Para conexión USB usá la extensión smartteam-makecode-extension
+ * (no agregues las dos al mismo proyecto).
+ */
+//% color="#00BCD9" icon="\uf294" block="SmartTEAM ML BT" weight=89
+namespace smartteamMLBT {
+    const PREFIJO = "ML:"
+    const PEDIDO = "ML?"
+    const PREFIJO_ALIAS = "ML@"
+    const SIN_DETECCION = "none"
+    const TIMEOUT_PEDIDO_MS = 500
+    const INTERVALO_SONDEO_MS = 200
+
+    let nombres: string[] = []
+    let manejadores: (() => void)[] = []
+    let claseActualInterna = ""
+    let respuestaPendiente = false
+    let iniciado = false
+    let conectado = false
+    let aliasPlaca = ""
+    let manejadorConectar: () => void = null
+    let manejadorDesconectar: () => void = null
+
+    function limpiar(texto: string): string {
+        let inicio = 0
+        let fin = texto.length
+        while (inicio < fin && texto.charCodeAt(inicio) <= 32) inicio++
+        while (fin > inicio && texto.charCodeAt(fin - 1) <= 32) fin--
+        return texto.substr(inicio, fin - inicio)
+    }
+
+    function esperarRespuesta(): void {
+        let esperado = 0
+        while (respuestaPendiente && esperado < TIMEOUT_PEDIDO_MS) {
+            basic.pause(10)
+            esperado += 10
+        }
+        respuestaPendiente = false
+    }
+
+    function solicitar(): void {
+        if (!conectado) return
+        if (respuestaPendiente) {
+            // ya hay un pedido en vuelo: esperar a que se resuelva
+            esperarRespuesta()
+            return
+        }
+        respuestaPendiente = true
+        bluetooth.uartWriteString(PEDIDO + "\n")
+        esperarRespuesta()
+    }
+
+    function enviarAlias(): void {
+        if (conectado && aliasPlaca.length > 0) {
+            bluetooth.uartWriteString(PREFIJO_ALIAS + aliasPlaca + "\n")
+        }
+    }
+
+    function iniciar(): void {
+        if (iniciado) return
+        iniciado = true
+
+        bluetooth.startUartService()
+
+        bluetooth.onUartDataReceived(serial.delimiters(Delimiters.NewLine), function () {
+            const linea = limpiar(bluetooth.uartReadUntil(serial.delimiters(Delimiters.NewLine)))
+            if (linea.indexOf(PREFIJO) != 0) return
+            const clase = limpiar(linea.substr(PREFIJO.length))
+            if (clase.length == 0) return
+            respuestaPendiente = false
+            if (clase == claseActualInterna) return
+            claseActualInterna = clase
+            for (let i = 0; i < nombres.length; i++) {
+                if (nombres[i] == clase) manejadores[i]()
+            }
+        })
+
+        bluetooth.onBluetoothConnected(function () {
+            conectado = true
+            if (manejadorConectar) manejadorConectar()
+            // El alias se envía con una pausa: el navegador recién activa las
+            // notificaciones UART un instante después de conectar.
+            control.inBackground(function () {
+                basic.pause(1500)
+                enviarAlias()
+            })
+        })
+
+        bluetooth.onBluetoothDisconnected(function () {
+            conectado = false
+            respuestaPendiente = false
+            if (manejadorDesconectar) manejadorDesconectar()
+        })
+
+        // Sondeo en segundo plano, SOLO mientras hay una computadora conectada
+        control.inBackground(function () {
+            while (true) {
+                if (conectado) solicitar()
+                basic.pause(INTERVALO_SONDEO_MS)
+            }
+        })
+    }
+
+    /**
+     * Muestra en los LEDs el nombre Bluetooth de esta placa (p. ej. "zatig"),
+     * para encontrarla en el selector del navegador. El nombre es propio de
+     * cada placa y no se puede cambiar.
+     */
+    //% blockId=smartteam_mlbt_mostrar_nombre
+    //% block="mostrar nombre Bluetooth"
+    //% weight=99
+    export function mostrarNombreBluetooth(): void {
+        iniciar()
+        basic.showString(control.deviceName())
+    }
+
+    /**
+     * Le pone un alias a la placa (p. ej. "placa de Juana"). El entrenador lo
+     * muestra junto al nombre cuando alguien se conecta.
+     * @param alias el nombre para mostrar, sin ":" ni "@"
+     */
+    //% blockId=smartteam_mlbt_nombrar_placa
+    //% block="nombrar placa %alias"
+    //% alias.defl="mi placa"
+    //% weight=98
+    export function nombrarPlaca(alias: string): void {
+        iniciar()
+        let limpio = limpiar(alias)
+        let resultado = ""
+        for (let i = 0; i < limpio.length && resultado.length < 24; i++) {
+            const c = limpio.charAt(i)
+            if (c != ":" && c != "@" && c != "\n" && c != "\r") resultado += c
+        }
+        aliasPlaca = resultado
+        enviarAlias()
+    }
+
+    /**
+     * Pide la clase actual al entrenador ahora mismo y espera la respuesta
+     * (máximo 500 ms). No suele hacer falta: la extensión ya pregunta sola
+     * en segundo plano mientras hay una computadora conectada.
+     */
+    //% blockId=smartteam_mlbt_pedir_clase
+    //% block="pedir clase ML"
+    //% weight=95
+    export function pedirClaseML(): void {
+        iniciar()
+        solicitar()
+    }
+
+    /**
+     * Ejecuta el código cuando el entrenador detecta la clase indicada.
+     * @param nombre el nombre de la clase, igual que en el entrenador
+     */
+    //% blockId=smartteam_mlbt_al_detectar
+    //% block="al detectar clase ML %nombre"
+    //% nombre.defl="clase 1"
+    //% weight=100
+    export function alDetectarClase(nombre: string, manejador: () => void): void {
+        iniciar()
+        nombres.push(limpiar(nombre))
+        manejadores.push(manejador)
+    }
+
+    /**
+     * Ejecuta el código cuando el entrenador deja de detectar (clase "none").
+     */
+    //% blockId=smartteam_mlbt_sin_deteccion
+    //% block="cuando no se detecta ninguna clase ML"
+    //% weight=90
+    export function cuandoNoHayDeteccion(manejador: () => void): void {
+        alDetectarClase(SIN_DETECCION, manejador)
+    }
+
+    /**
+     * La última clase detectada por el entrenador ("none" si no hay detección).
+     * Se actualiza sola gracias al sondeo en segundo plano.
+     */
+    //% blockId=smartteam_mlbt_clase_actual
+    //% block="clase ML actual"
+    //% weight=80
+    export function claseActual(): string {
+        iniciar()
+        return claseActualInterna
+    }
+
+    /**
+     * Verdadero si la clase detectada en este momento es la indicada.
+     * Se actualiza sola gracias al sondeo en segundo plano.
+     * @param nombre el nombre de la clase, igual que en el entrenador
+     */
+    //% blockId=smartteam_mlbt_clase_es
+    //% block="clase ML es %nombre"
+    //% nombre.defl="clase 1"
+    //% weight=70
+    export function claseEs(nombre: string): boolean {
+        iniciar()
+        return claseActualInterna == limpiar(nombre)
+    }
+
+    /**
+     * Ejecuta el código cuando una computadora se conecta por Bluetooth.
+     */
+    //% blockId=smartteam_mlbt_al_conectar
+    //% block="al conectar Bluetooth"
+    //% weight=60
+    export function alConectarBluetooth(manejador: () => void): void {
+        iniciar()
+        manejadorConectar = manejador
+    }
+
+    /**
+     * Ejecuta el código cuando la computadora se desconecta.
+     */
+    //% blockId=smartteam_mlbt_al_desconectar
+    //% block="al desconectar Bluetooth"
+    //% weight=59
+    export function alDesconectarBluetooth(manejador: () => void): void {
+        iniciar()
+        manejadorDesconectar = manejador
+    }
+}
