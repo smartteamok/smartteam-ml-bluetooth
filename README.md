@@ -16,13 +16,10 @@ donde el USB no está disponible.
 | Bloque | Tipo | Qué hace |
 |---|---|---|
 | `mostrar nombre Bluetooth` | acción | Muestra en los LEDs el nombre propio de la placa (ej. `zatig`) para encontrarla en el selector del navegador |
-| `nombrar placa [alias]` | acción | Le pone un alias (ej. "placa de Juana") que el entrenador muestra al conectar |
+| `clase ML es [nombre]` | reporter (booleano) | Verdadero si la clase actual es esa. Se actualiza sola |
+| `clase ML actual` | reporter (texto) | La última clase conocida (`none` si no hay). Se actualiza sola |
 | `al detectar clase ML [nombre]` | evento | Se ejecuta cuando el entrenador detecta esa clase |
 | `cuando no se detecta ninguna clase ML` | evento | Se ejecuta cuando se pierde la detección |
-| `clase ML actual` | reporter (texto) | La última clase conocida (`none` si no hay). Se actualiza sola |
-| `clase ML es [nombre]` | reporter (booleano) | Verdadero si la clase actual es esa. Se actualiza sola |
-| `pedir clase ML` | acción | Fuerza un pedido inmediato (opcional: la extensión ya pregunta sola) |
-| `al conectar Bluetooth` / `al desconectar Bluetooth` | eventos | Para mostrar un ✓/✗ y que los chicos sepan si están conectados |
 
 El nombre de la clase debe escribirse **igual** que en el entrenador
 (mayúsculas/minúsculas y espacios incluidos).
@@ -42,8 +39,7 @@ nada llega sin pedirlo.
 2. ⚙️ → **Extensiones** → pegá la URL de este repositorio. Aparece la categoría
    **SmartTEAM ML BT** (celeste).
 3. Armá tu programa. Ejemplo:
-   - `al iniciar` → `nombrar placa "placa de Juana"` + `mostrar nombre Bluetooth`
-   - `al conectar Bluetooth` → `mostrar ícono` ✓
+   - `al iniciar` → `mostrar nombre Bluetooth`
    - `al detectar clase ML "pulgar arriba"` → `mostrar ícono` 😊
 4. **Verificá el emparejamiento**: ⚙️ → **Configuración del proyecto** → debe
    estar en **"No Pairing Required"** (esta extensión ya lo preconfigura, pero
@@ -58,8 +54,8 @@ nada llega sin pedirlo.
 2. En el panel **micro:bit** tocá **📶 Bluetooth**.
 3. En el selector del navegador buscá el nombre que muestra la placa en sus
    LEDs (ej. "BBC micro:bit [zatig]") y conectá.
-4. El panel muestra la placa conectada (nombre + alias) y el contador de
-   "pedidos respondidos" late a ~5 por segundo.
+4. El panel muestra la placa conectada y el contador de "pedidos respondidos"
+   late a ~5 por segundo.
 
 ### 3. Jugar
 
@@ -83,15 +79,14 @@ perdió la conexión y se reconecta con un toque.
   de pedidos crece? Si no crece, regrabá el `.hex` (programas con la extensión
   USB no preguntan por Bluetooth).
 - **"La placa no tiene el servicio UART"** → el programa grabado no usa esta
-  extensión; grabá uno que sí.
+  extensión; grabá uno que tenga al menos un bloque SmartTEAM ML BT.
 - **Cada conexión es de a una** → una placa acepta UNA computadora por vez.
 
 ## Detalles técnicos
 
 - Servicio UART de Nordic (NUS) sobre BLE; escrituras del navegador en
   paquetes de ≤20 bytes.
-- micro:bit → navegador: `ML?\n` (sondeo, solo conectado) y `ML@<alias>\n`
-  (al conectar, si se usó `nombrar placa`).
+- micro:bit → navegador: `ML?\n` (sondeo, solo conectado).
 - navegador → micro:bit: `ML:<clase>\n`, una respuesta por pedido; `none` es
   la clase reservada para "sin detección".
 - Emparejamiento: modo abierto (`bluetooth.open = 1` vía yotta config).

@@ -1,6 +1,6 @@
 {
     "name": "smartteam-ml-bluetooth",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "Bloques en español para recibir por Bluetooth las clases detectadas por el entrenador SmartTEAM ML (requiere micro:bit V2)",
     "license": "MIT",
     "dependencies": {
