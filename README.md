@@ -69,6 +69,11 @@ perdió la conexión y se reconecta con un toque.
 
 ## Problemas frecuentes
 
+- **"GATT Error: Not supported" al conectar** → el `.hex` quedó compilado con
+  emparejamiento requerido. En MakeCode: ⚙️ → Configuración del proyecto →
+  activá **"No Pairing Required"** → **volvé a descargar y regrabar** (la
+  config vive dentro del firmware). Si la placa figura emparejada en el
+  Bluetooth del sistema operativo, eliminala de ahí y reintentá.
 - **La placa no aparece en el selector** → verificá que el programa con esta
   extensión esté grabado y la placa encendida; acercala a la computadora.
 - **Pide emparejar / no conecta** → el proyecto debe estar en "No Pairing
